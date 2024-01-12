@@ -10,11 +10,13 @@ import torch
 import torchvision.transforms as transforms
 from auto_LiRPA import BoundedModule, BoundedTensor
 from auto_LiRPA.perturbations import PerturbationLpNorm
+from torch import float64
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset, Subset
 from torchvision.datasets import MNIST
 
 from models import SimpleEventCNN
+from nesy_verification.pgd import pgd
 
 BATCH_SIZE = 32
 NUM_MAGNITUDE_CLASSES = 3
@@ -50,14 +52,19 @@ RESULTS_COLUMNS = [
 ]
 
 
-def bound_softmax(h_L, h_U):
+def bound_softmax(h_L, h_U, use_float64=False):
     """Given lower and upper input bounds into a softmax, calculate their concrete
     output bounds."""
 
+    if use_float64:
+        h_L = h_L.to(float64)
+        h_U = h_U.to(float64)
+
     shift = h_U.max(dim=1, keepdim=True).values
     exp_L, exp_U = torch.exp(h_L - shift), torch.exp(h_U - shift)
-    lower = exp_L / (torch.sum(exp_U, dim=1, keepdim=True) - exp_U + exp_L + 1e-7)
-    upper = exp_U / (torch.sum(exp_L, dim=1, keepdim=True) - exp_L + exp_U + 1e-7)
+    lower = (exp_L / (torch.sum(exp_U, dim=1, keepdim=True) - exp_U + exp_L))  # TODO EdS: Check removed epsilon
+    upper = (exp_U / (torch.sum(exp_L, dim=1, keepdim=True) - exp_L + exp_U))
+
     return lower, upper
 
 
@@ -113,7 +120,14 @@ def calculate_bounds(model: torch.nn.Module, dataloader, epsilon: float, method:
             x=(ptb_inputs,), method=method.split()[0]
         )
 
-        # First handle magnitude verification
+        # Sanity check that bounds are indeed higher/lower than output
+        assert (lb <= pred).all().item()
+        assert (ub >= pred).all().item()
+
+        attack_results = pgd(model, epsilon, inputs, labels, final_layer=False)
+        # num_successful_attacks = sum(not value for value in attacks_results)
+
+        # Iterate over each element in batch, first handling magnitude verification
         for i in range(len(magnitude_labels)):
             new_row = {"mnist_id": mnist_idx[i].item()}
 
@@ -131,10 +145,17 @@ def calculate_bounds(model: torch.nn.Module, dataloader, epsilon: float, method:
                 # Pass the bounds through a softmax bounding layer
                 # TODO EdS: A sanity check is required to check why I was getting
                 #  different results when using a softmax layer in auto_LiRPA
-                lb_magnitude, ub_magnitude = bound_softmax(lb[:, :3], ub[:, :3])
+                lb_magnitude, ub_magnitude = bound_softmax(lb[:, :3], ub[:, :3], use_float64=True)
+
+                # Sanity check that post-softmax bounds are a valid probability, i.e. between 0 and 1
+                assert (0 <= lb_magnitude).all(), f"Magnitude lower bound lower than 0"
+                assert (lb_magnitude).all() <= 1, f"Magnitude lower bound greater than 1"
+                assert (0 <= ub_magnitude).all(), f"Magnitude Upper bound lower than 0"
+                assert (ub_magnitude).all() <= 1, f"Magnitude Upper bound greater than 1"
 
                 truth_idx = int(magnitude_labels[i])
 
+                # TODO EdS: refactor this method so magnitude and parity code separated
                 # Check that the lower bound of the truth class is greater than
                 # the upper bound of all other classes
                 if (
@@ -143,7 +164,7 @@ def calculate_bounds(model: torch.nn.Module, dataloader, epsilon: float, method:
                         > torch.cat(
                             (
                                 ub_magnitude[:, :3][i][:truth_idx],
-                                ub_magnitude[:, :3][i][truth_idx + 1 :],
+                                ub_magnitude[:, :3][i][truth_idx + 1:],
                             )
                         )
                     )
@@ -154,6 +175,14 @@ def calculate_bounds(model: torch.nn.Module, dataloader, epsilon: float, method:
                     num_magnitude_samples_safe += 1
                 else:
                     magnitude_safe = False
+
+                if attack_results[i] and magnitude_safe:
+                    a, adv_output, adv_input = pgd(model, epsilon, inputs, labels, final_layer=False, return_model_output=True)
+                    # print(f"For the input {np.array(inputs[i,0,...])}")
+                    # print(f"We have the classification {labels[i,...][:3]}")
+                    # print(f"We have the adv input {np.array(adv_input[i,0, ...])}")
+                    # print(f"We have the adv output: {adv_output[i,...]}")
+                    raise Exception("Attack was successful but the bounds were not safe!")
 
                 for j in range(NUM_MAGNITUDE_CLASSES):
                     indicator = "(ground-truth)" if j == magnitude_labels[i] else ""
@@ -208,7 +237,13 @@ def calculate_bounds(model: torch.nn.Module, dataloader, epsilon: float, method:
                 # Pass the bounds through a softmax bounding layer
                 # TODO EdS: A sanity check is required to check why I was getting
                 #  different results when using a softmax layer in auto_LiRPA
-                lb_parity, ub_parity = bound_softmax(lb[:, 3:], ub[:, 3:])
+                lb_parity, ub_parity = bound_softmax(lb[:, 3:], ub[:, 3:], use_float64=True)
+
+                # Sanity check that post-softmax bounds are a valid probability, i.e. between 0 and 1
+                assert (0 <= lb_parity).all(), f"Parity Lower bound lower than 0"
+                assert (lb_parity <= 1).all(), f"Parity Lower bound greater than 1"
+                assert (0 <= ub_parity).all(), f"Parity Upper bound lower than 0"
+                assert (ub_parity <= 1).all(), f"Parity Upper bound greater than 1"
 
                 truth_idx = int(parity_labels[i])
 
@@ -224,8 +259,8 @@ def calculate_bounds(model: torch.nn.Module, dataloader, epsilon: float, method:
                             )
                         )
                         )
-                                .all()
-                                .item()
+                        .all()
+                        .item()
                 ):
                     parity_safe = True
                     num_parity_samples_safe += 1
@@ -250,6 +285,28 @@ def calculate_bounds(model: torch.nn.Module, dataloader, epsilon: float, method:
                             safe=safe_indicator,
                         )
                     ) if PRINT else None
+
+                    # Sanity check Vasilis' point
+                    lb_parity_digit_even = lb_parity[i][0].item()
+                    lb_parity_digit_odd = lb_parity[i][1].item()
+                    ub_parity_digit_even = ub_parity[i][0].item()
+                    ub_parity_digit_odd = ub_parity[i][1].item()
+
+                    assert ((lb_parity_digit_even + ub_parity_digit_odd) - 1.0 < 1e-12), f"{(lb_parity_digit_even + ub_parity_digit_odd) - 1.0}"
+                    assert ((lb_parity_digit_odd + ub_parity_digit_even) - 1.0 < 1e-12), f"{(lb_parity_digit_odd + ub_parity_digit_even)}"
+
+                    assert ((float(format(lb_parity_digit_even)) + float(format(ub_parity_digit_odd))) - 1.0 < 1e-12), f"{(lb_parity_digit_even + ub_parity_digit_odd) - 1.0}"
+                    assert ((float(format(lb_parity_digit_odd)) + float(format(ub_parity_digit_even))) - 1.0 < 1e-12), f"{(lb_parity_digit_odd + ub_parity_digit_even)}"
+
+                    # assert ((float(format(lb_parity_digit_even, ".6f")) + float(format(ub_parity_digit_odd, ".6f"))) == 1.0)
+                    # assert ((float(format(lb_parity_digit_odd, ".6f")) + float(format(ub_parity_digit_even, ".6f"))) == 1.0)
+
+                    # new_row[f"parity_{j}_lb"] = lb_parity[i][j].item()
+                    # new_row[f"parity_{j}_ub"] = ub_parity[i][j].item()
+                    # new_row["parity_correct"] = True
+                    # new_row["parity_prediction_idx"] = parity_preds[i].item()
+                    # new_row["parity_label_idx"] = parity_labels[i].item()
+                    # new_row["parity_safe"] = parity_safe
                     new_row[f"parity_{j}_lb"] = lb_parity[i][j].item()
                     new_row[f"parity_{j}_ub"] = ub_parity[i][j].item()
                     new_row["parity_correct"] = True
@@ -388,6 +445,4 @@ if __name__ == "__main__":
     cnn_no_softmax.eval()
 
     print("Verifying CNN Softmax")
-    calculate_bounds(cnn_no_softmax, test_dl, epsilon=0.1)
-
-    # TODO: Robustify the model to get smaller bounds
+    calculate_bounds(cnn_no_softmax, test_dl, epsilon=0.01)
