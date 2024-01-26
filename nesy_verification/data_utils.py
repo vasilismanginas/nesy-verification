@@ -9,26 +9,33 @@ import torchvision.transforms as transforms
 
 class MNISTSimpleEvents(Dataset):
     def __init__(self):
-        sequences, _, simple_events = get_mnist_sequences()
+        sequences, indices, _, simple_events = get_mnist_sequences()
 
-        self.images = []
-        for sequence in sequences:
+        self.images, self.indices = [], []
+        for sequence, index in zip(sequences, indices):
             self.images.extend(sequence)
+            self.indices.extend(index)
 
         self.simple_event_labels = []
         for labels in simple_events:
             self.simple_event_labels.extend(labels)
 
         self.transform = transforms.PILToTensor()
+        self.normalise = transforms.Compose([
+            transforms.Normalize((0.1307,), (0.3081,)),
+        ])
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, idx):
-        return (
-            self.transform(self.images[idx]).float(),
-            torch.tensor([float(label) for label in self.simple_event_labels[idx]]),
-        )
+        try:
+            return (
+                self.normalise(self.transform(self.images[idx]).float()),
+                torch.tensor([float(label) for label in self.simple_event_labels[idx]]),
+            )
+        except Exception:
+            x = 1
 
 
 def get_mnist_sequences():
@@ -117,13 +124,16 @@ def get_mnist_sequences():
         if found_third == -1:
             negative_sequences.append(candidate)
 
-    sequences, labels, simple_events = [], [], []
+    sequences, idx_sequences, labels, simple_events = [], [], [], []
 
     for sequence in positive_sequences:
         image_seq = []
+        idx_seq = []
         simple_event_seq = []
         for number in sequence:
-            image_seq.append(dataset[random.choice(label2id[number])][0])
+            choice_idx = random.choice(label2id[number])
+            idx_seq.append(choice_idx)
+            image_seq.append(dataset[choice_idx][0])
             simple_event_seq.append(
                 [
                     number < 3,
@@ -134,14 +144,18 @@ def get_mnist_sequences():
                 ]
             )
         sequences.append(image_seq)
+        idx_sequences.append(idx_seq)
         simple_events.append(simple_event_seq)
         labels.append(1)
 
     for sequence in negative_sequences:
         image_seq = []
+        idx_seq = []
         simple_event_seq = []
         for number in sequence:
-            image_seq.append(dataset[random.choice(label2id[number])][0])
+            choice_idx = random.choice(label2id[number])
+            idx_seq.append(choice_idx)
+            image_seq.append(dataset[choice_idx][0])
             simple_event_seq.append(
                 [
                     number < 3,
@@ -152,7 +166,8 @@ def get_mnist_sequences():
                 ]
             )
         sequences.append(image_seq)
+        idx_sequences.append(idx_seq)
         simple_events.append(simple_event_seq)
         labels.append(0)
 
-    return sequences, labels, simple_events
+    return sequences, idx_sequences, labels, simple_events
