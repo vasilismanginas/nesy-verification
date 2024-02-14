@@ -27,6 +27,7 @@ test_dl = DataLoader(test_dataset, batch_size=32, shuffle=True)
 
 num_epochs = 50
 cnn = SimpleEventCNNnoSoftmax(num_classes=5)
+cnn.double()
 optimizer = optim.Adam(cnn.parameters(), lr=1e-3)
 loss_function = nn.CrossEntropyLoss()
 

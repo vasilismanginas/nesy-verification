@@ -15,9 +15,9 @@ torchmetrics = "^1.2.0"
 pylint = "^3.0.2"
 torchvision = "^0.13.0"
 scikit-learn = "^1.3.2"
-auto-lirpa = { path = "/Users/edward/github/imperial/nesy-verification/auto_LiRPA" }
 tqdm = "*"
 pandas = "*"
+appdirs = "^1.4.4"
 
 [tool.poetry.dev-dependencies]
 black = "*"
