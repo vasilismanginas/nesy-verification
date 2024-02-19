@@ -31,7 +31,7 @@ class MNISTSimpleEvents(Dataset):
     def __getitem__(self, idx):
         try:
             return (
-                self.normalise(self.transform(self.images[idx]).float()),
+                self.normalise(self.transform(self.images[idx]).double()),
                 torch.tensor([float(label) for label in self.simple_event_labels[idx]]),
             )
         except Exception:
