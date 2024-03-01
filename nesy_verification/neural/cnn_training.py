@@ -5,8 +5,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from sklearn.metrics import f1_score
-from models import SimpleEventCNN, SimpleEventCNNnoSoftmax
-from data_utils import MNISTSimpleEvents
+from model_definitions import SimpleEventCNN, SimpleEventCNNnoSoftmax
+from data.MNIST_data_utils import MNISTSimpleEvents
 
 dataset = MNISTSimpleEvents()
 
@@ -19,9 +19,9 @@ train_indices = train_dataset.indices
 test_indices = test_dataset.indices
 dummy_indices = test_dataset.indices[0]
 
-torch.save(train_indices, os.path.join(os.getcwd(), 'saved_models/icl/train_indices.pt'))
-torch.save(test_indices, os.path.join(os.getcwd(), 'saved_models/icl/test_indices.pt'))
-torch.save(dummy_indices, os.path.join(os.getcwd(), 'saved_models/icl/dummy_indices.pt'))
+torch.save(train_indices, os.path.join(os.getcwd(), 'neural/saved_models/icl/train_indices.pt'))
+torch.save(test_indices, os.path.join(os.getcwd(), 'neural/saved_models/icl/test_indices.pt'))
+torch.save(dummy_indices, os.path.join(os.getcwd(), 'neural/saved_models/icl/dummy_indices.pt'))
 
 train_dl = DataLoader(train_dataset, batch_size=32, shuffle=True)
 test_dl = DataLoader(test_dataset, batch_size=32, shuffle=True)
@@ -98,4 +98,4 @@ for cnn, model_name, loss_function in models:
             )
         )
 
-    torch.save(cnn.state_dict(), os.path.join(os.getcwd(), f'saved_models/icl/cnn_with_{model_name}.pt'))
+    torch.save(cnn.state_dict(), os.path.join(os.getcwd(), f'neural/saved_models/icl/cnn_with_{model_name}.pt'))

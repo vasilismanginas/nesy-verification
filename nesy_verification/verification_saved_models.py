@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset, Subset
 from torchvision.datasets import MNIST
 
-from models import SimpleEventCNN
+from neural.model_definitions import SimpleEventCNN
 from nesy_verification.pgd import pgd
 
 BATCH_SIZE = 32
@@ -23,7 +23,7 @@ NUM_MAGNITUDE_CLASSES = 3
 NUM_PARITY_CLASSES = 2
 PRINT = False
 NUM_SAMPLES = 20
-MODEL_PATH = Path(__file__).parent.resolve() / "saved_models/icl"
+MODEL_PATH = Path(__file__).parent.resolve() / "neural/saved_models/icl"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 pd.options.display.float_format = "{:.10f}".format
