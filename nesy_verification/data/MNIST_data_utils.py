@@ -1,6 +1,7 @@
 import os
 import torch
 import random
+import pandas as pd
 from collections import defaultdict
 from torch.utils.data import Dataset
 from torchvision.datasets import MNIST
@@ -9,7 +10,7 @@ import torchvision.transforms as transforms
 
 class MNISTSimpleEvents(Dataset):
     def __init__(self):
-        sequences, indices, _, simple_events = get_mnist_sequences()
+        sequences, indices, _, simple_events = get_mnist_sequences(num_sequences=2000)
 
         self.images, self.indices = [], []
         for sequence, index in zip(sequences, indices):
@@ -21,9 +22,11 @@ class MNISTSimpleEvents(Dataset):
             self.simple_event_labels.extend(labels)
 
         self.transform = transforms.PILToTensor()
-        self.normalise = transforms.Compose([
-            transforms.Normalize((0.1307,), (0.3081,)),
-        ])
+        self.normalise = transforms.Compose(
+            [
+                transforms.Normalize((0.1307,), (0.3081,)),
+            ]
+        )
 
     def __len__(self):
         return len(self.images)
@@ -38,17 +41,30 @@ class MNISTSimpleEvents(Dataset):
             x = 1
 
 
-def get_mnist_sequences():
+def get_mnist_sequences(num_sequences, only_test=False):
     dataset = MNIST(os.path.expanduser("~/.cache/mnist"), train=True, download=True)
 
     label2id = defaultdict(list)
 
-    for i, (_, label) in enumerate(dataset):  # type: ignore (type checkers don't work in this language)
-        label2id[label].append(i)
+    if not only_test:  # make sequences both for train and test
+        for i, (_, label) in enumerate(dataset):  # type: ignore (type checkers don't work in this language)
+            label2id[label].append(i)
+    else:
+        results_df = pd.read_csv(
+            os.path.join(
+                os.getcwd(),
+                "nesy_verification/neural_bounds/results_0.01_no_NaN.csv",
+            )
+        )
+        test_idxs = results_df["mnist_id"].values.tolist()
+
+        for index in test_idxs:
+            _, label = dataset[index]
+            label2id[label].append(index)
 
     max_sequence_length, num_datapoints, positive_sequences, negative_sequences = (
         10,
-        2000,
+        num_sequences,
         [],
         [],
     )

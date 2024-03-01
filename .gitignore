@@ -1,4 +1,10 @@
-nesy_verification/__pycache__/
-.idea
-venv
 todo_eds.md
+venv
+.env
+.idea
+.vscode/
+prism_test/
+docs/
+nesy_verification/old_stuff/
+**/__pycache__/
+things_to_note.txt

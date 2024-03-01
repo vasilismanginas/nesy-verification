@@ -1,12 +1,97 @@
-from pathlib import Path
-
-import pandas as pd
+import os
 import torch
+import pandas as pd
+from pathlib import Path
+from typing import Tuple
 
-from nesy_verification.verification_saved_models import load_datasets, load_model, approx_gte, approx_lte
+
+from torch import float64
+from torchvision.datasets import MNIST
+from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, Subset
+import torchvision.transforms as transforms
+
+from neural.model_definitions import SimpleEventCNN, SimpleEventCNNnoSoftmax
 
 
-MODEL_PATH = Path(__file__).parent.resolve() / "saved_models/icl"
+class CustomSubset(Subset):
+    """Created a custom subset to have access to MNIST indices when creating the CSV."""
+
+    def __init__(self, dataset, indices):
+        super().__init__(dataset, indices)
+        self.transform = transforms.PILToTensor()
+        self.normalise = transforms.Compose(
+            [
+                transforms.Normalize((0.1307,), (0.3081,)),
+            ]
+        )
+
+    def classify_label(self, x):
+        """Given the MNIST digit, return the class label (for magnitude classification
+        then parity classification)."""
+        return [
+            x < 3,
+            3 <= x <= 6,
+            x > 6,
+            x % 2 == 0,
+            x % 2 != 0,
+        ]
+
+    def __getitem__(self, idx):
+        # one_hot_tensor = torch.nn.functional.one_hot(torch.tensor(self.dataset[self.indices[idx]][1]), NUM_MAGNITUDE_CLASSES)
+        return (
+            self.indices[idx],
+            self.normalise(self.transform(self.dataset[self.indices[idx]][0]).float().double()),
+            torch.tensor(
+                self.classify_label(self.dataset[self.indices[idx]][1])
+            ).float(),
+        )
+
+
+def approx_lte(x, y, atol=1e-5):
+    if not isinstance(x, torch.Tensor):
+        x = torch.tensor(x, dtype=float64)
+
+    if not isinstance(y, torch.Tensor):
+        y = torch.tensor(y, dtype=float64)
+
+    return (x <= y).all() or (torch.isclose(x, y, atol=atol)).all()
+
+
+def approx_gte(x, y, atol=1e-5):
+    if not isinstance(x, torch.Tensor):
+        x = torch.tensor(x, dtype=float64)
+
+    if not isinstance(y, torch.Tensor):
+        y = torch.tensor(y, dtype=float64)
+
+    return (x >= y).all() or (torch.isclose(x, y, atol=atol)).all()
+
+
+def load_model(model_filename: str, num_classes: int, with_softmax=False, log_softmax=False):
+    if with_softmax:
+        model = SimpleEventCNN(num_classes=num_classes, log_softmax=log_softmax)
+    else:
+        model = SimpleEventCNNnoSoftmax(num_classes=num_classes)
+
+    model.load_state_dict(torch.load(MODEL_PATH / model_filename))
+    return model
+
+
+def load_datasets() -> Tuple:
+    dataset = MNIST(os.path.expanduser("~/.cache/mnist"), train=True, download=True)
+
+    train_indices = torch.load(MODEL_PATH / "train_indices.pt")
+    test_indices = torch.load(MODEL_PATH / "test_indices.pt")
+    train_subset = CustomSubset(dataset, train_indices)
+    test_subset = CustomSubset(dataset, test_indices)
+
+    train_dl = DataLoader([d for d in train_subset], batch_size=32)
+    test_dl = DataLoader([d for d in test_subset], batch_size=32)
+    return train_dl, test_dl
+
+
+MODEL_PATH = Path(__file__).parent.resolve() / "neural/saved_models/icl"
 neural_bounds = pd.read_csv(
     str(MODEL_PATH / "results_0.01_with_softmax_test.csv")
 )
