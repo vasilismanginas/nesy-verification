@@ -9,10 +9,11 @@ from nesy_verification.verification_saved_models import load_datasets, load_mode
 MODEL_PATH = Path(__file__).parent.resolve() / "saved_models/icl"
 
 bounds_files = [
-    MODEL_PATH / "results_0.01_with_softmax.csv",
-    MODEL_PATH / "results_0.001_with_softmax.csv",
-    MODEL_PATH / "results_0.0001_with_softmax.csv",
-    MODEL_PATH / "results_1e-5_with_softmax.csv",
+    MODEL_PATH / "results_0.1_no_softmax.csv",
+    MODEL_PATH / "results_0.01_no_softmax.csv",
+    MODEL_PATH / "results_0.001_no_softmax.csv",
+    MODEL_PATH / "results_0.0001_no_softmax.csv",
+    MODEL_PATH / "results_1e-05_no_softmax.csv",
 ]
 
 train_dl, test_dl = load_datasets()
@@ -27,9 +28,7 @@ cnn_no_softmax.eval()
 
 for bounds_file in bounds_files:
 
-    neural_bounds = pd.read_csv(
-        str(MODEL_PATH / "results_0.01_with_softmax.csv")
-    )
+    neural_bounds = pd.read_csv(str(bounds_file))
 
     for test_idx, idx_sequence in enumerate(test_dl):
         for i in range(idx_sequence[0].shape[0]):
