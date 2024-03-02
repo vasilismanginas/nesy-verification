@@ -366,7 +366,7 @@ def calculate_bounds(
         "epsilon": f"{epsilon}",
     }
 
-    filename = f"results_{epsilon}_with_softmax"
+    filename = f"results_{epsilon}_no_softmax"
     filename += f"_rounded" if round_floats else ""
     save_results_to_csv(df_results, results_summary, filename)
 
