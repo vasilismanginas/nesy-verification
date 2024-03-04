@@ -1,116 +1,32 @@
-import os
 import torch
 import pandas as pd
 from pathlib import Path
-from typing import Tuple
+from verification_saved_models import load_datasets, load_model, approx_gte, approx_lte
 
 
-from torch import float64
-from torchvision.datasets import MNIST
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset, Subset
-import torchvision.transforms as transforms
+with_softmax = False
 
-from neural.model_definitions import SimpleEventCNN, SimpleEventCNNnoSoftmax
-
-
-class CustomSubset(Subset):
-    """Created a custom subset to have access to MNIST indices when creating the CSV."""
-
-    def __init__(self, dataset, indices):
-        super().__init__(dataset, indices)
-        self.transform = transforms.PILToTensor()
-        self.normalise = transforms.Compose(
-            [
-                transforms.Normalize((0.1307,), (0.3081,)),
-            ]
-        )
-
-    def classify_label(self, x):
-        """Given the MNIST digit, return the class label (for magnitude classification
-        then parity classification)."""
-        return [
-            x < 3,
-            3 <= x <= 6,
-            x > 6,
-            x % 2 == 0,
-            x % 2 != 0,
-        ]
-
-    def __getitem__(self, idx):
-        # one_hot_tensor = torch.nn.functional.one_hot(torch.tensor(self.dataset[self.indices[idx]][1]), NUM_MAGNITUDE_CLASSES)
-        return (
-            self.indices[idx],
-            self.normalise(self.transform(self.dataset[self.indices[idx]][0]).float().double()),
-            torch.tensor(
-                self.classify_label(self.dataset[self.indices[idx]][1])
-            ).float(),
-        )
-
-
-def approx_lte(x, y, atol=1e-5):
-    if not isinstance(x, torch.Tensor):
-        x = torch.tensor(x, dtype=float64)
-
-    if not isinstance(y, torch.Tensor):
-        y = torch.tensor(y, dtype=float64)
-
-    return (x <= y).all() or (torch.isclose(x, y, atol=atol)).all()
-
-
-def approx_gte(x, y, atol=1e-5):
-    if not isinstance(x, torch.Tensor):
-        x = torch.tensor(x, dtype=float64)
-
-    if not isinstance(y, torch.Tensor):
-        y = torch.tensor(y, dtype=float64)
-
-    return (x >= y).all() or (torch.isclose(x, y, atol=atol)).all()
-
-
-def load_model(model_filename: str, num_classes: int, with_softmax=False, log_softmax=False):
-    if with_softmax:
-        model = SimpleEventCNN(num_classes=num_classes, log_softmax=log_softmax)
-    else:
-        model = SimpleEventCNNnoSoftmax(num_classes=num_classes)
-
-    model.load_state_dict(torch.load(MODEL_PATH / model_filename))
-    return model
-
-
-def load_datasets() -> Tuple:
-    dataset = MNIST(os.path.expanduser("~/.cache/mnist"), train=True, download=True)
-
-    train_indices = torch.load(MODEL_PATH / "train_indices.pt")
-    test_indices = torch.load(MODEL_PATH / "test_indices.pt")
-    train_subset = CustomSubset(dataset, train_indices)
-    test_subset = CustomSubset(dataset, test_indices)
-
-    train_dl = DataLoader([d for d in train_subset], batch_size=32)
-    test_dl = DataLoader([d for d in test_subset], batch_size=32)
-    return train_dl, test_dl
-
-
-
-MODEL_PATH = Path(__file__).parent.resolve() / "saved_models/icl"
+if with_softmax:
+    file_ending = "with_softmax"
+    cnn = load_model("cnn_with_softmax.pt", 5, with_softmax=True)
+    BOUND_PATH = Path(__file__).parent.resolve() / "neural/neural_bounds/with_softmax"
+else:
+    file_ending = "no_softmax"
+    cnn = load_model("cnn_no_softmax.pt", 5, with_softmax=False)
+    BOUND_PATH = Path(__file__).parent.resolve() / "neural/neural_bounds/without_softmax"
 
 bounds_files = [
-    MODEL_PATH / "results_0.1_no_softmax.csv",
-    MODEL_PATH / "results_0.01_no_softmax.csv",
-    MODEL_PATH / "results_0.001_no_softmax.csv",
-    MODEL_PATH / "results_0.0001_no_softmax.csv",
-    MODEL_PATH / "results_1e-05_no_softmax.csv",
+    BOUND_PATH / f"results_0.1_{file_ending}.csv",
+    BOUND_PATH / f"results_0.01_{file_ending}.csv",
+    BOUND_PATH / f"results_0.001_{file_ending}.csv",
+    BOUND_PATH / f"results_0.0001_{file_ending}.csv",
+    BOUND_PATH / f"results_1e-05_{file_ending}.csv",
 ]
 
 train_dl, test_dl = load_datasets()
+cnn.double()
+cnn.eval()
 
-cnn_no_softmax = load_model("cnn_no_softmax.pt", 5, with_softmax=False)
-cnn_no_softmax.double()
-cnn_no_softmax.eval()
-
-# cnn_softmax = load_model("cnn_softmax.pt", 5, with_softmax=True)
-# cnn_softmax.double()
-# cnn_softmax.eval()
 
 for bounds_file in bounds_files:
 
@@ -132,14 +48,17 @@ for bounds_file in bounds_files:
             # get the CNN prediction, unsqueeze because we don't have
             # batches here so we need an extra dimension in front
             input_img = torch.unsqueeze(img, dim=0)
-            cnn_outputs = cnn_no_softmax(input_img)
+            cnn_outputs = cnn(input_img)
             # cnn_outputs = round_tensor(cnn_outputs)
 
-            # pass the predictions through a softmax
-            softmax_mag = torch.softmax(cnn_outputs[:, :3], dim=1)
-            softmax_par = torch.softmax(cnn_outputs[:, 3:], dim=1)
-            # softmax_mag = cnn_outputs[:, :3]
-            # softmax_par = cnn_outputs[:, 3:]
+            if with_softmax:
+                # slice the cnn outputs for parity/magnitude
+                softmax_mag = cnn_outputs[:, :3]
+                softmax_par = cnn_outputs[:, 3:]
+            else:
+                # pass the predictions through a softmax
+                softmax_mag = torch.softmax(cnn_outputs[:, :3], dim=1)
+                softmax_par = torch.softmax(cnn_outputs[:, 3:], dim=1)
 
             (
                 smaller_than_3_pred,

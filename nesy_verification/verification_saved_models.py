@@ -1,3 +1,4 @@
+# type: ignore
 """Provide verification bounds for the saved models"""
 import json
 import os
@@ -17,7 +18,7 @@ from torchvision.datasets import MNIST
 
 from neural.model_definitions import SimpleEventCNN, SimpleEventCNNnoSoftmax
 from nesy_verification.pgd import pgd
-from nesy_verification.verification_saved_models_softmax import round_tensor
+# from nesy_verification.verification_saved_models_softmax import round_tensor
 
 BATCH_SIZE = 32
 NUM_MAGNITUDE_CLASSES = 3
@@ -25,6 +26,11 @@ NUM_PARITY_CLASSES = 2
 PRINT = False
 NUM_SAMPLES = 20
 MODEL_PATH = Path(__file__).parent.resolve() / "neural/saved_models/icl"
+
+BOUND_PATH = Path(__file__).parent.resolve() / "neural/neural_bounds"
+WITH_SOFTMAX = False
+BOUND_PATH = BOUND_PATH / "with_softmax" if WITH_SOFTMAX else BOUND_PATH / "without_softmax"
+
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 pd.options.display.float_format = "{:.10f}".format
@@ -373,17 +379,17 @@ def calculate_bounds(
 
 def save_results_to_csv(results: pd.DataFrame, summary: dict, filename: str):
     results.to_csv(
-        MODEL_PATH / f"{filename}.csv",
+        BOUND_PATH / f"{filename}.csv",
         index=False,
     )
 
     with open(
-        MODEL_PATH / f"{filename}.json",
+        BOUND_PATH / f"{filename}.json",
         "w",
     ) as file:
         json.dump(summary, file, indent=4)
 
-    print(f"Saved to file { MODEL_PATH / f'{filename}.csv'}")
+    print(f"Saved to file { BOUND_PATH / f'{filename}.csv'}")
 
 
 def load_model(model_filename: str, num_classes: int, with_softmax=False, log_softmax=False):
