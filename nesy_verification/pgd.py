@@ -35,7 +35,7 @@ def pgd(
     )
 
     adv_model_output = model(adv_data)[:, :3]
-    adv_model_output = torch.nn.Softmax()(adv_model_output)
+    adv_model_output = torch.nn.Softmax(dim=1)(adv_model_output)
 
     if return_model_output:
         # results, adv_output, adv_inpt

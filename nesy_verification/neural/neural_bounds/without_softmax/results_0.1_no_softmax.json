@@ -1,10 +1,10 @@
 {
     "method": "IBP",
-    "num_magnitude_samples_verified": "2579",
-    "num_magnitude_samples_correctly_classified": "2533",
-    "num_magnitude_samples_safe": "2492",
-    "num_parity_samples_verified": "2579",
-    "num_parity_samples_correctly_classified": "2547",
-    "num_parity_samples_safe": "2530",
+    "num_magnitude_samples_verified": "2546",
+    "num_magnitude_samples_correctly_classified": "2501",
+    "num_magnitude_samples_safe": "2464",
+    "num_parity_samples_verified": "2546",
+    "num_parity_samples_correctly_classified": "2511",
+    "num_parity_samples_safe": "2484",
     "epsilon": "0.1"
 }
