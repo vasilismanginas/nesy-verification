@@ -460,9 +460,8 @@ class CustomDataset(Dataset):
 
 if __name__ == "__main__":
     train_dl, test_dl = load_datasets()
-    with_softmax = True
 
-    if with_softmax:
+    if WITH_SOFTMAX:
         print("Verifying CNN with Softmax")
         BOUNDS_PATH = BOUND_PATH / "with_softmax"
         cnn = load_model("cnn_with_softmax.pt", 5, with_softmax=True)
@@ -475,4 +474,4 @@ if __name__ == "__main__":
     cnn.eval()
 
     for epsilon in [0.1, 0.01, 0.001, 0.0001, 0.00001]:
-        calculate_bounds(cnn, test_dl, epsilon=epsilon, with_softmax=with_softmax)
+        calculate_bounds(cnn, test_dl, epsilon=epsilon, with_softmax=WITH_SOFTMAX)
