@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset, Subset
 from torchvision.datasets import MNIST
 
-from neural.model_definitions import SimpleEventCNN, SimpleEventCNNnoSoftmax
+from nesy_verification.neural.model_definitions import SimpleEventCNN, SimpleEventCNNnoSoftmax
 from nesy_verification.pgd import pgd
 # from nesy_verification.verification_saved_models_softmax import round_tensor
 

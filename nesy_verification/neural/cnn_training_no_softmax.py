@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, random_split
 from sklearn.metrics import f1_score
 from model_definitions import SimpleEventCNNnoSoftmax
 from nesy_verification.data.MNIST_data_utils import MNISTSimpleEvents
+from nesy_verification.verification_saved_models import MODEL_PATH
 
 dataset = MNISTSimpleEvents()
 
@@ -18,24 +19,9 @@ train_indices = [dataset.indices[i] for i in train_dataset.indices]
 test_indices = [dataset.indices[i] for i in test_dataset.indices]
 dummy_indices = dataset.indices[test_dataset.indices[0]]
 
-torch.save(
-    train_indices,
-    os.path.join(
-        os.getcwd(), "nesy_verification/neural/saved_models/icl/train_indices.pt"
-    ),
-)
-torch.save(
-    test_indices,
-    os.path.join(
-        os.getcwd(), "nesy_verification/neural/saved_models/icl/test_indices.pt"
-    ),
-)
-torch.save(
-    dummy_indices,
-    os.path.join(
-        os.getcwd(), "nesy_verification/neural/saved_models/icl/dummy_indices.pt"
-    ),
-)
+torch.save(train_indices, MODEL_PATH / "train_indices.pt")
+torch.save(test_indices, MODEL_PATH / "test_indices.pt")
+torch.save(dummy_indices, MODEL_PATH / "dummy_indices.pt")
 
 train_dl = DataLoader(train_dataset, batch_size=32, shuffle=True)
 test_dl = DataLoader(test_dataset, batch_size=32, shuffle=True)
