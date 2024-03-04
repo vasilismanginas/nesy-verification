@@ -1,11 +1,7 @@
-import torch.nn as nn
-from typing import Callable
-
-from typing import Callable
-
 import numpy as np
 import torch
 import torch.nn as nn
+from typing import Callable
 
 
 def pgd(

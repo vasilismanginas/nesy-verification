@@ -5,9 +5,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from sklearn.metrics import f1_score
-from models import SimpleEventCNN, SimpleEventCNNnoSoftmax
-from data_utils import MNISTSimpleEvents
-from nesy_verification.verification_saved_models import load_datasets
+from model_definitions import SimpleEventCNNnoSoftmax
+from nesy_verification.data.MNIST_data_utils import MNISTSimpleEvents
 
 dataset = MNISTSimpleEvents()
 
@@ -15,31 +14,49 @@ N = len(dataset)
 N_test = int(N * 0.2)
 train_dataset, test_dataset = random_split(dataset, [N - N_test, N_test])
 
-# TODO EdS: Instead of the below, import the same indices as used in cnn_training_no_softmax.py
-train_indices = train_dataset.indices
-test_indices = test_dataset.indices
-dummy_indices = test_dataset.indices[0]
+train_indices = [dataset.indices[i] for i in train_dataset.indices]
+test_indices = [dataset.indices[i] for i in test_dataset.indices]
+dummy_indices = dataset.indices[test_dataset.indices[0]]
 
-train_dl, test_dl = load_datasets()
+torch.save(
+    train_indices,
+    os.path.join(
+        os.getcwd(), "nesy_verification/neural/saved_models/icl/train_indices.pt"
+    ),
+)
+torch.save(
+    test_indices,
+    os.path.join(
+        os.getcwd(), "nesy_verification/neural/saved_models/icl/test_indices.pt"
+    ),
+)
+torch.save(
+    dummy_indices,
+    os.path.join(
+        os.getcwd(), "nesy_verification/neural/saved_models/icl/dummy_indices.pt"
+    ),
+)
+
+train_dl = DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_dl = DataLoader(test_dataset, batch_size=32, shuffle=True)
 
 num_epochs = 50
-# log_cnn = SimpleEventCNN(num_classes=5, log_softmax=True)
-cnn = SimpleEventCNN(num_classes=5, log_softmax=False)
+cnn = SimpleEventCNNnoSoftmax(num_classes=5)
 cnn.double()
-
 optimizer = optim.Adam(cnn.parameters(), lr=1e-3)
 loss_function = nn.CrossEntropyLoss()
 
+
 for epoch in range(num_epochs):
     train_losses = []
-    for mnist_indices, train_inputs, train_labels in train_dl:
+    for train_inputs, train_labels in train_dl:
         train_outputs = cnn(train_inputs)
 
         # calculate the loss for the magnitude task (num < 3, 3 < num < 6, num > 6)
-        magnitude_loss = loss_function(train_outputs[:, :3], torch.argmax(train_labels[:, :3], dim=1))
+        magnitude_loss = loss_function(train_outputs[:, :3], train_labels[:, :3])
 
         # calculate the loss for the parity task (even(num), odd(num))
-        parity_loss = loss_function(train_outputs[:, 3:], torch.argmax(train_labels[:, 3:], dim=1))
+        parity_loss = loss_function(train_outputs[:, 3:], train_labels[:, 3:])
 
         # sum them to get the total loss
         loss = magnitude_loss + parity_loss
@@ -57,11 +74,11 @@ for epoch in range(num_epochs):
         all_parity_labels = []
         all_parity_outputs = []
 
-        for mnist_index, test_inputs, test_labels in test_dl:
+        for test_inputs, test_labels in test_dl:
             test_outputs = cnn(test_inputs)
 
-            test_magnitude_loss = loss_function(test_outputs[:, :3], torch.argmax(test_labels[:, :3], dim=1))
-            test_parity_loss = loss_function(test_outputs[:, 3:], torch.argmax(test_labels[:, 3:], dim=1))
+            test_magnitude_loss = loss_function(test_outputs[:, :3], test_labels[:, :3])
+            test_parity_loss = loss_function(test_outputs[:, 3:], test_labels[:, 3:])
             test_losses.append((test_magnitude_loss + test_parity_loss).item())
 
             all_magnitude_labels.extend(torch.argmax(test_labels[:, :3], dim=1))
@@ -87,4 +104,7 @@ for epoch in range(num_epochs):
         )
     )
 
-    torch.save(cnn.state_dict(), os.path.join(os.getcwd(), f'saved_models/icl/cnn_softmax.pt'))
+    torch.save(
+        cnn.state_dict(),
+        os.path.join(os.getcwd(), "neural/saved_models/icl/cnn_no_softmax.pt"),
+    )
