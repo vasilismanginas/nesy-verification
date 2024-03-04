@@ -4,7 +4,7 @@ from pathlib import Path
 from verification_saved_models import load_datasets, load_model, approx_gte, approx_lte
 
 
-with_softmax = False
+with_softmax = True
 
 if with_softmax:
     file_ending = "with_softmax"

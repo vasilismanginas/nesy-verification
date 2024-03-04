@@ -1,4 +1,3 @@
-# type: ignore
 """Provide verification bounds for the saved models"""
 import json
 import os
@@ -96,7 +95,7 @@ def bound_softmax(h_L, h_U, use_float64=False):
 
 
 def calculate_bounds(
-    model: torch.nn.Module, dataloader, epsilon: float, method: str = "IBP", round_floats=False,
+    model: torch.nn.Module, dataloader, epsilon: float, with_softmax, method: str = "IBP", round_floats=False,
 ):
     """Calculate bounds for the provided model and dataset.
 
@@ -460,19 +459,20 @@ class CustomDataset(Dataset):
 
 
 if __name__ == "__main__":
-    cnn_no_softmax = load_model("cnn_no_softmax.pt", 5, with_softmax=False)
-    # cnn_softmax = load_model("cnn_softmax.pt", 5, with_softmax=True)
-    cnn_no_softmax.double()
-    # cnn_softmax.double()
-
     train_dl, test_dl = load_datasets()
+    with_softmax = True
 
-    cnn_no_softmax.eval()
-    # cnn_softmax.eval()
+    if with_softmax:
+        print("Verifying CNN with Softmax")
+        BOUNDS_PATH = BOUND_PATH / "with_softmax"
+        cnn = load_model("cnn_with_softmax.pt", 5, with_softmax=True)
+    else:
+        print("Verifying CNN without Softmax")
+        BOUNDS_PATH = BOUND_PATH / "without_softmax"
+        cnn = load_model("cnn_no_softmax.pt", 5, with_softmax=False)
 
-    print("Verifying CNN without Softmax")
+    cnn.double()
+    cnn.eval()
+
     for epsilon in [0.1, 0.01, 0.001, 0.0001, 0.00001]:
-        calculate_bounds(cnn_no_softmax, test_dl, epsilon=epsilon)
-
-    # print("Verifying CNN with Softmax")
-    # calculate_bounds(cnn_softmax, test_dl, epsilon=0.01)
+        calculate_bounds(cnn, test_dl, epsilon=epsilon, with_softmax=with_softmax)
