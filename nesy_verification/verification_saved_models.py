@@ -170,10 +170,10 @@ def calculate_bounds(
                 f"ground-truth is: {magnitude_labels[i]}"
             ) if PRINT else None
 
-            # if magnitude_preds[i] == magnitude_labels[i]:
-            magnitude_correct = magnitude_preds[i] == magnitude_labels[i]
+            magnitude_correct = (magnitude_preds[i] == magnitude_labels[i]).item()
 
-            num_magnitude_samples_correctly_classified += 1
+            if magnitude_correct:
+                num_magnitude_samples_correctly_classified += 1
 
             # Pass the bounds through a softmax bounding layer
             lb_magnitude, ub_magnitude = bound_softmax(lb[:, :3], ub[:, :3], use_float64=True)
@@ -242,7 +242,7 @@ def calculate_bounds(
                 new_row["magnitude_correct"] = magnitude_correct
                 new_row["magnitude_prediction_idx"] = magnitude_preds[i].item()
                 new_row["magnitude_label_idx"] = magnitude_labels[i].item()
-                new_row["magnitude_safe"] = magnitude_safe  # TODI EdS: DRY
+                new_row["magnitude_safe"] = magnitude_safe
 
             # Second check parity
             num_parity_samples_verified += 1
@@ -252,9 +252,10 @@ def calculate_bounds(
                 f"the ground-truth is: {parity_labels[i]}"
             ) if PRINT else None
 
-            parity_correct = parity_preds[i] == parity_labels[i]
+            parity_correct = (parity_preds[i] == parity_labels[i]).item()
 
-            num_parity_samples_correctly_classified += 1
+            if parity_correct:
+                num_parity_samples_correctly_classified += 1
 
             # Pass the bounds through a softmax bounding layer
             # TODO EdS: A sanity check is required to check why I was getting
@@ -331,6 +332,7 @@ def calculate_bounds(
                 new_row["parity_prediction_idx"] = parity_preds[i].item()
                 new_row["parity_label_idx"] = parity_labels[i].item()
                 new_row["parity_safe"] = parity_safe
+                new_row["epsilon"] = epsilon
 
             safe = True if magnitude_safe and parity_safe else False
             new_row["safe"] = safe
@@ -364,7 +366,7 @@ def calculate_bounds(
         "epsilon": f"{epsilon}",
     }
 
-    filename = f"results_{epsilon}_with_softmax"
+    filename = f"results_{epsilon}_no_softmax"
     filename += f"_rounded" if round_floats else ""
     save_results_to_csv(df_results, results_summary, filename)
 
@@ -452,7 +454,7 @@ class CustomDataset(Dataset):
 
 
 if __name__ == "__main__":
-    cnn_no_softmax = load_model("cnn_no_softmax_test.pt", 5, with_softmax=False)
+    cnn_no_softmax = load_model("cnn_no_softmax.pt", 5, with_softmax=False)
     # cnn_softmax = load_model("cnn_softmax.pt", 5, with_softmax=True)
     cnn_no_softmax.double()
     # cnn_softmax.double()
@@ -463,7 +465,8 @@ if __name__ == "__main__":
     # cnn_softmax.eval()
 
     print("Verifying CNN without Softmax")
-    calculate_bounds(cnn_no_softmax, test_dl, epsilon=0.01)
+    for epsilon in [0.1, 0.01, 0.001, 0.0001, 0.00001]:
+        calculate_bounds(cnn_no_softmax, test_dl, epsilon=epsilon)
 
     # print("Verifying CNN with Softmax")
     # calculate_bounds(cnn_softmax, test_dl, epsilon=0.01)
