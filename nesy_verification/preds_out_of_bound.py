@@ -3,7 +3,7 @@ import pandas as pd
 from pathlib import Path
 from verification_saved_models import load_datasets, load_model, approx_gte, approx_lte
 
-
+# please keep this false, the models with softmax don't really work currently
 with_softmax = False
 
 if with_softmax:
@@ -26,7 +26,6 @@ bounds_files = [
 train_dl, test_dl = load_datasets()
 cnn.double()
 cnn.eval()
-
 
 for bounds_file in bounds_files:
 

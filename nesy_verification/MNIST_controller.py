@@ -1,15 +1,16 @@
-# TODO: rewrite the dataset generation
-# TODO: do everything through a transition matrix
-
 import os
 import torch
 import pandas as pd
+from pathlib import Path
 from data.MNIST_data_utils import get_mnist_sequences
-from neural.model_definitions import SimpleEventCNN
+from nesy_verification.verification_saved_models import load_model
 from arithmetic_circuit_bound_propagation import get_expression_min_max
 from automaton_bound_propagation import get_state_min_max
 import torchvision.transforms as transforms
 from torchvision.datasets import MNIST
+
+# TODO: inference is currently done stupidly and should be rewritten the way it is meant to be
+# i.e. with transition matrices, circuits, etc. probably steal from Nick
 
 
 def get_consistent_bounds(bounds_per_label, print_stuff=False):
@@ -71,6 +72,7 @@ def get_consistent_bounds(bounds_per_label, print_stuff=False):
 
 def print_current_timestep(
     t,
+    image_label,
     variable_bounds,
     transition_bounds,
     previous_state_probs,
@@ -96,7 +98,7 @@ def print_current_timestep(
         "s3": "s2 * t3 + s3 * 1 \t\t",
     }
 
-    print("t =", t)
+    print("t =", t, ", image label =", image_label)
     print("-" * 70)
 
     for var, bounds in variable_bounds.items():
@@ -125,6 +127,7 @@ def get_state_bounds_from_sequence(
     print_timestep_info=False,
 ):
     state_prob_range = initial_state_prob_range
+    dataset = MNIST(os.path.expanduser("~/.cache/mnist"), train=True, download=True)
 
     for image_idx in idx_sequence:
         # get all bounds for this image
@@ -169,6 +172,7 @@ def get_state_bounds_from_sequence(
         if print_timestep_info:
             print_current_timestep(
                 idx_sequence.index(image_idx),
+                dataset[image_idx][1],
                 variable_bounds,
                 transition_bounds,
                 previous_state_probs=state_prob_range,
@@ -178,20 +182,6 @@ def get_state_bounds_from_sequence(
         state_prob_range = new_state_prob
 
     return state_prob_range
-
-
-def bound_softmax(h_L, h_U, use_float64=False):
-    """Given lower and upper input bounds into a softmax, calculate their concrete
-    output bounds."""
-
-    shift = h_U.max(dim=1, keepdim=True).values
-    exp_L, exp_U = torch.exp(h_L - shift), torch.exp(h_U - shift)
-    lower = exp_L / (
-        torch.sum(exp_U, dim=1, keepdim=True) - exp_U + exp_L
-    )  # TODO EdS: Check removed epsilon
-    upper = exp_U / (torch.sum(exp_L, dim=1, keepdim=True) - exp_L + exp_U)
-
-    return lower, upper
 
 
 def super_naive_inference(
@@ -207,19 +197,24 @@ def super_naive_inference(
     transform = transforms.PILToTensor()
     normalise = transforms.Normalize((0.1307,), (0.3081,))
 
+
     for image_idx in idx_sequence:
         input_img = torch.unsqueeze(
-            normalise(transform(dataset[image_idx][0]).float()), 0
+            normalise(transform(dataset[image_idx][0]).double()), 0
         )
 
         cnn_outputs = cnn(input_img)
+
+        # pass the predictions through a softmax
+        softmax_mag = torch.softmax(cnn_outputs[:, :3], dim=1)
+        softmax_par = torch.softmax(cnn_outputs[:, 3:], dim=1)
+
         (
             smaller_than_3_pred,
             between_3_and_6_pred,
             larger_than_6_pred,
-            even_pred,
-            odd_pred,
-        ) = cnn_outputs[0]
+        ) = softmax_mag[0].tolist()
+        even_pred, _ = softmax_par[0].tolist()
 
         # since we don't care about bounds now and we simply want to
         # do inference we use the same value as lower and upper bound
@@ -253,6 +248,7 @@ def super_naive_inference(
         if print_timestep_info:
             print_current_timestep(
                 idx_sequence.index(image_idx),
+                dataset[image_idx][1],
                 variable_bounds,
                 transition_bounds,
                 previous_state_probs=state_prob_range,
@@ -265,15 +261,27 @@ def super_naive_inference(
 
 
 if __name__ == "__main__":
-    models_dir = os.path.join(os.getcwd(), "nesy_verification/neural/saved_models/icl")
-    neural_bounds = pd.read_csv(
-        os.path.join(
-            os.getcwd(), "nesy_verification/neural_bounds/results_0.01_no_NaN.csv"
-        )
+    # define the files containing the bounds for the simple events
+    # in this case (MNIST) these are even(x)/odd(x), x<3, 3<x<6, 6<x
+    BOUND_PATH = (
+        Path(__file__).parent.resolve() / "neural/neural_bounds/without_softmax"
     )
+    bounds_files = [
+        BOUND_PATH / f"results_0.1_no_softmax.csv",
+        BOUND_PATH / f"results_0.01_no_softmax.csv",
+        BOUND_PATH / f"results_0.001_no_softmax.csv",
+        BOUND_PATH / f"results_0.0001_no_softmax.csv",
+        BOUND_PATH / f"results_1e-05_no_softmax.csv",
+    ]
 
-    _, idx_sequences, _, _ = get_mnist_sequences(num_sequences=100, only_test=True)
+    # load the trained CNN
+    # this is needed to carry out normal inference without bounds
+    # we will measure the performance with the bounds against this
+    cnn = load_model("cnn_no_softmax.pt", 5, with_softmax=False)
+    cnn.double()
+    cnn.eval()
 
+    # define the automaton
     # e.g. the second row says that the automaton can enter
     # state 1 if it is in state 0 and it sees t1 in the input,
     # or if it is in state 1 and it sees (1 - t2) in the input
@@ -296,37 +304,67 @@ if __name__ == "__main__":
         for state in state_expressions.keys()
     }
 
-    # this is needed to carry out normal inference without bounds
-    # we will measure the performance with the bounds against this
-    cnn_no_softmax = SimpleEventCNN(num_classes=5, log_softmax=True)
-    cnn_no_softmax.load_state_dict(
-        torch.load(os.path.join(models_dir, "cnn_no_softmax.pt"))
-    )
+    for bounds_file in bounds_files:
+        # get the bounds of the CNN on simple events for this epsilon
+        neural_bounds = pd.read_csv(str(bounds_file))
 
-    for idx_sequence in idx_sequences:
-        print("Current sequence:", idx_sequence, "\n")
-
-        final_state_probs = super_naive_inference(
-            cnn_no_softmax,
-            idx_sequence,
-            initial_state_prob_range,
-            state_expressions,
-            print_timestep_info=True,
+        # get the test sequences for the MNIST task
+        _, idx_sequences, sequence_labels, _ = get_mnist_sequences(
+            num_sequences=100, only_test=True
         )
 
-        final_state_bounds = get_state_bounds_from_sequence(
-            idx_sequence,
-            neural_bounds,
-            initial_state_prob_range,
-            state_expressions,
-            print_timestep_info=False,
-        )
-
-        print("\t Initial \t   Final")
-        for state in final_state_bounds.keys():
-            print(
-                f"{state}: \t{[round(n, 4) for n in initial_state_prob_range[state]]} \t {[round(n, 4) for n in final_state_bounds[state]]}"
+        true_positives = 0
+        true_negatives = 0
+        robust_true_positives = 0
+        robust_true_negatives = 0
+        for i, idx_sequence in enumerate(idx_sequences):
+            # perform normal inference for this sequence to obtain the
+            # probability distribution over states at the end of the sequence
+            final_state_distribution = super_naive_inference(
+                cnn,
+                idx_sequence,
+                initial_state_prob_range,
+                state_expressions,
+                print_timestep_info=False,
             )
-        print("\n\n")
 
-        break
+            # compute bounds only if this sequence is a true positive or true negative
+            # verification is not meaningful in false positives/negatives
+            sequence_label = sequence_labels[i]
+            prob_accept = final_state_distribution["s3"][0]
+            true_positive = prob_accept > 0.5 and sequence_label == 1
+            true_negative = prob_accept < 0.5 and sequence_label == 0
+            true_positives += true_positive
+            true_negatives += true_negative
+
+            if true_positive or true_negative:
+
+                # get the probability bounds for all states at the end of the sequence
+                # for every timestep given bounds on the simple events this computes
+                # bounds of boolean expressions over these simple events, and then
+                # propagates these through the run of the automaton (i.e. through time)
+                final_state_bounds = get_state_bounds_from_sequence(
+                    idx_sequence,
+                    neural_bounds,
+                    initial_state_prob_range,
+                    state_expressions,
+                    print_timestep_info=False,
+                )
+
+                # check if our decision was robust given these bounds
+                accept_state_lower_bound = final_state_bounds["s3"][0]
+
+                if sequence_label == 0 and accept_state_lower_bound < 0.5:
+                    robust_true_negatives += 1
+                
+                if sequence_label == 1 and accept_state_lower_bound > 0.5:
+                    robust_true_positives += 1
+
+        epsilon = str(bounds_file).split('/')[-1].split('_')[1]
+        acc = (true_positives + true_negatives) / len(idx_sequences)
+        veri_acc = (robust_true_positives + robust_true_negatives) / len(idx_sequences)
+        robustness = (robust_true_positives + robust_true_negatives) / (true_positives + true_negatives)
+        print("Epsilon:", epsilon, end="\t - \t")
+        print(f"Accuracy: {acc}", end=", ")
+        print(f"Verifiable Accuracy: {veri_acc}", end=", ")
+        print(f"Robustness: {robustness}")

@@ -6,6 +6,7 @@ from collections import defaultdict
 from torch.utils.data import Dataset
 from torchvision.datasets import MNIST
 import torchvision.transforms as transforms
+from nesy_verification.verification_saved_models import MODEL_PATH
 
 
 class MNISTSimpleEvents(Dataset):
@@ -50,13 +51,7 @@ def get_mnist_sequences(num_sequences, only_test=False):
         for i, (_, label) in enumerate(dataset):  # type: ignore (type checkers don't work in this language)
             label2id[label].append(i)
     else:
-        results_df = pd.read_csv(
-            os.path.join(
-                os.getcwd(),
-                "nesy_verification/neural_bounds/results_0.01_no_NaN.csv",
-            )
-        )
-        test_idxs = results_df["mnist_id"].values.tolist()
+        test_idxs = torch.load(MODEL_PATH / "test_indices.pt")
 
         for index in test_idxs:
             _, label = dataset[index]
