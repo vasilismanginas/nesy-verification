@@ -1,11 +1,12 @@
-Everything of interest is within the nesy_verification folder.
-Dependencies are in pyproject.toml.
+## End-to-end verification of a temporal neurosymbolic (NeSy) system on a synthetic MNIST task.
 
-## Verification
-
-### Setup
+### Installation and Setup
 
 ```bash
+# clone the repo
+git clone git@github.com:vasilismanginas/nesy-verification.git
+cd nesy-verification
+git checkout mnist
 # install all dependencies
 poetry env use python3.11
 poetry install
