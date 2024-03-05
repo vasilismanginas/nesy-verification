@@ -6,9 +6,8 @@ Dependencies are in pyproject.toml.
 ### Setup
 
 ```bash
-python3 -m venv venv
-source ./venv/bin/activate
-source .env
-pip install poetry 
+poetry env use python3.11
 poetry install
+poetry shell
+python nesy_verification/preds_out_of_bounds.py
 ```
