@@ -134,16 +134,16 @@ def get_state_bounds_from_sequence(
         df_row = neural_bounds[neural_bounds["mnist_id"] == image_idx]
 
         # get lower/upper bounds for the non-binary classes
-        magnitude_bounds = {
+        variable_bounds = {
             1: [df_row.iloc[0, 1], df_row.iloc[0, 2]],  # smaller_than_3
             2: [df_row.iloc[0, 3], df_row.iloc[0, 4]],  # between_3_and_6
             3: [df_row.iloc[0, 5], df_row.iloc[0, 6]],  # larger_than_6
         }
 
-        # this ensures that the bounds for non-binary classes are consistent
-        # i.e. choosing a value for all variables but one will always lead
-        # to a choice for the final variable which is within its range
-        variable_bounds = get_consistent_bounds(magnitude_bounds)
+        # # this ensures that the bounds for non-binary classes are consistent
+        # # i.e. choosing a value for all variables but one will always lead
+        # # to a choice for the final variable which is within its range
+        # variable_bounds = get_consistent_bounds(variable_bounds)
 
         # add lower and upper bounds for even
         # odd is not needed as this is a binary class

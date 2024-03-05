@@ -86,3 +86,5 @@ for bounds_file in bounds_files:
             assert approx_lte(larger_than_6_pred, loaded_bounds["greater_than_6"][1], 1e-12), f"f {test_idx} {image_idx} {i} {loaded_bounds['greater_than_6'][1] - larger_than_6_pred}"
             assert approx_gte(even_pred, loaded_bounds["even"][0], 1e-12), f"g {test_idx} {image_idx} {i} {loaded_bounds['even'][0] - even_pred}"
             assert approx_lte(even_pred, loaded_bounds["even"][1], 1e-12), f"h{test_idx} {image_idx} {i} {loaded_bounds['even'][1] - even_pred}"
+    
+    print(f"All assertions passed for {bounds_file}")
